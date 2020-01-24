@@ -1,0 +1,43 @@
+cache:
+  directories:
+    - "$HOME/.m2"
+language: java
+before_install:
+  - rm ~/.m2/settings.xml
+  - unset _JAVA_OPTIONS
+env:
+  global:
+    - MAVEN_OPTS=-Xmx512m
+install:
+  - if [ "$ACTION" == "docs" ]; then sudo pip install sphinx requests; fi
+script:
+  - if [ "$ACTION" == "build" ]; then mvn -f src/pom.xml -B -U -T3 -fae -Prelease clean install $ARGS && mvn -f src/community/pom.xml -nsu -B -U -T4 -fae -DskipTests -Prelease -PcommunityRelease clean install $COMMUNITY_ARGS; fi
+  - if [ "$ACTION" == "build" ]; then grep -H "<testsuite" `find . -iname "TEST-*.xml"` | sed 's/.\/\(.*\)\/target.*:<testsuite .* name="\(.*\)" time="\([^"]*\)" .*/\3\t\2\t\1/' | sort -nr | head -50; fi
+  - if [ "$ACTION" == "docs" ]; then mvn -f doc/en install; fi
+  - if [ "$ACTION" == "package" ]; then mvn -f src/pom.xml -B -U -T3 -fae -Prelease,communityRelease clean install -DskipTests; mvn -f src/pom.xml assembly:attached -nsu; mvn -f src/community/pom.xml assembly:attached -nsu; fi
+before-caching:
+  - rm -rf $HOME/.m2/repository/org/geotools
+  - rm -rf $HOME/.m2/repository/org/geowebcache
+  - rm -rf $HOME/.m2/repository/org/geoserver
+notifications:
+  email:
+    on_success: never
+    on_failure: never
+matrix:
+  include:
+    - jdk: oraclejdk8
+      dist: trusty
+      env: ACTION=build ARGS="-Dfmt.skip=true" COMMUNITY_ARGS=$ARGS 
+      name: Java 8 build
+    - jdk: openjdk11
+      env: ACTION=build ARGS="-Dfmt.skip=true" COMMUNITY_ARGS=$ARGS
+      name: Java 11 build
+    - jdk: openjdk11
+      env: ACTION=build ARGS="-Dfmt.action=check -Dqa -DskipTests=true" COMMUNITY_ARGS="-Dfmt.action=check -DskipTests=true"
+      name: QA build on Java 11
+    - jdk: openjdk11
+      env: ACTION=docs
+      name: Documentation build
+    - jdk: openjdk11
+      env: ACTION=package
+      name: Build release packages
